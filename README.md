@@ -14,7 +14,7 @@ sofaload is benchmarking tool for SOFARPC. It is extended from [h2load](https://
     automake
     autoconf
     ./configure --enable-app
-    make
+    make // your g++ should support -std=c++14
     sudo make install
 
 # Usage
