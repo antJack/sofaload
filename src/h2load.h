@@ -261,8 +261,6 @@ struct Worker {
     void run();
     void process_req_stat(RequestStat *req_stat);
     void process_client_stat(ClientStat *cstat);
-    void report_progress();
-    void report_rate_progress();
     // This function calls the destructors of all the clients.
     void stop_all_clients();
     // This function frees a client from the list of clients for this Worker.

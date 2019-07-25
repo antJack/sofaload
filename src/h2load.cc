@@ -164,10 +164,10 @@ void duration_timeout_cb(struct ev_loop *loop, ev_timer *w, int revents) {
 
     ev_periodic_stop(worker->loop, &worker->qpsUpdater);
 
-    std::cout << "Main benchmark duration is over for thread #" << worker->id
-              << ". Stopping all clients." << std::endl;
+    // std::cout << "Main benchmark duration is over for thread #" << worker->id
+    //           << ". Stopping all clients." << std::endl;
     worker->stop_all_clients();
-    std::cout << "Stopped all clients for thread #" << worker->id << std::endl;
+    // std::cout << "Stopped all clients for thread #" << worker->id << std::endl;
     ev_break(loop, EVBREAK_ALL);
 }
 } // namespace
@@ -177,10 +177,10 @@ namespace {
 void warmup_timeout_cb(struct ev_loop *loop, ev_timer *w, int revents) {
     auto worker = static_cast<Worker *>(w->data);
 
-    std::cout << "Warm-up phase is over for thread #" << worker->id << "."
-              << std::endl;
-    std::cout << "Main benchmark duration is started for thread #" << worker->id
-              << "." << std::endl;
+    // std::cout << "Warm-up phase is over for thread #" << worker->id << "."
+    //           << std::endl;
+    // std::cout << "Main benchmark duration is started for thread #" << worker->id
+    //           << "." << std::endl;
     assert(worker->stats.req_started == 0);
     assert(worker->stats.req_done == 0);
 
@@ -333,7 +333,6 @@ int Client::make_socket(addrinfo *addr) {
         SSL_set_connect_state(ssl);
     }
 
-    // std::cout << "::connect id: " << id << std::endl;
     auto rv = ::connect(fd, addr->ai_addr, addr->ai_addrlen);
 
     if (rv != 0 && errno != EINPROGRESS) {
@@ -358,8 +357,8 @@ int Client::connect() {
         record_connect_start_time();
     } else if (worker->current_phase == Phase::INITIAL_IDLE) {
         worker->current_phase = Phase::WARM_UP;
-        std::cout << "Warm-up started for thread #" << worker->id << "."
-                  << std::endl;
+        // std::cout << "Warm-up started for thread #" << worker->id << "."
+        //           << std::endl;
         ev_timer_start(worker->loop, &worker->warmup_watcher);
     }
 
@@ -767,7 +766,6 @@ void Client::on_stream_close(int32_t stream_id, bool success, bool final) {
         worker->record_rtt(rtt);
     }
 
-    worker->report_progress();
     streams.erase(stream_id);
 
     if (total_req_left.load() <= 0) {
@@ -1254,7 +1252,6 @@ void Worker::run() {
         } else {
             clients.push_back(client);
         }
-        report_rate_progress();
     }
     ev_run(loop, 0);
 }
@@ -1265,25 +1262,6 @@ void Worker::process_req_stat(RequestStat *req_stat) {
 
 void Worker::process_client_stat(ClientStat *cstat) {
     stats.client_stats.push_back(*cstat);
-}
-
-void Worker::report_progress() {
-    // if (id != 0 || config->is_rate_mode() ||
-    //     stats.req_done % progress_interval || config->is_timing_based_mode())
-    //     { return;
-    // }
-
-    // std::cout << "progress: " << stats.req_done * 100 / stats.req_todo
-    //           << "% done" << std::endl;
-}
-
-void Worker::report_rate_progress() {
-    // if (id != 0 || nconns_made % progress_interval) {
-    //     return;
-    // }
-
-    // std::cout << "progress: " << nconns_made * 100 / nclients
-    //           << "% of clients started" << std::endl;
 }
 
 void Worker::record_rtt(uint64_t rtt_in_us) {
@@ -1559,22 +1537,22 @@ std::vector<std::string> read_uri_from_file(std::istream &infile) {
 namespace {
 Worker * create_worker(uint32_t id, SSL_CTX *ssl_ctx,
                                       size_t nclients, size_t rate) {
-    std::stringstream rate_report;
-    if (config.is_rate_mode() && nclients > rate) {
-        rate_report << "Up to " << rate << " client(s) will be created every "
-                    << util::duration_str(config.rate_period) << " ";
-    }
+    // std::stringstream rate_report;
+    // if (config.is_rate_mode() && nclients > rate) {
+    //     rate_report << "Up to " << rate << " client(s) will be created every "
+    //                 << util::duration_str(config.rate_period) << " ";
+    // }
 
-    if (config.is_timing_based_mode()) {
-        std::cout << "spawning thread #" << id << ": " << nclients
-                  << " total client(s). Timing-based test with "
-                  << config.warm_up_time << "s of warm-up time and "
-                  << config.duration << "s of main duration for measurements."
-                  << std::endl;
-    } else {
-        std::cout << "spawning thread #" << id << ": " << nclients
-                  << " total client(s). " << rate_report.str() << std::endl;
-    }
+    // if (config.is_timing_based_mode()) {
+    //     std::cout << "spawning thread #" << id << ": " << nclients
+    //               << " total client(s). Timing-based test with "
+    //               << config.warm_up_time << "s of warm-up time and "
+    //               << config.duration << "s of main duration for measurements."
+    //               << std::endl;
+    // } else {
+    //     std::cout << "spawning thread #" << id << ": " << nclients
+    //               << " total client(s). " << rate_report.str() << std::endl;
+    // }
 
     if (config.is_rate_mode()) {
         return new Worker(id, ssl_ctx, nclients, rate, &config);
