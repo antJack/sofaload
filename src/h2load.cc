@@ -86,7 +86,6 @@ Config::Config()
 Config::~Config() {
     if (addrs) {
         if (base_uri_unix) {
-            delete addrs;
         } else {
             freeaddrinfo(addrs);
         }
@@ -121,7 +120,6 @@ void writecb(struct ev_loop *loop, ev_io *w, int revents) {
     client->restart_timeout();
     auto rv = client->do_write();
     if (rv == Client::ERR_CONNECT_FAIL) {
-        std::cout << "writecb call client->disconnect" << std::endl;
         client->disconnect();
         // Try next address
         client->current_addr = nullptr;
@@ -129,7 +127,6 @@ void writecb(struct ev_loop *loop, ev_io *w, int revents) {
         if (rv != 0) {
             client->fail();
             client->worker->free_client(client);
-            delete client;
             return;
         }
         return;
@@ -150,7 +147,6 @@ void readcb(struct ev_loop *loop, ev_io *w, int revents) {
             return;
         }
         client->worker->free_client(client);
-        delete client;
         return;
     }
     writecb(loop, &client->wev, revents);
@@ -1356,7 +1352,7 @@ SDStat compute_time_stat(const std::vector<double> &samples,
 
 namespace {
 SDStats
-process_time_stats(const std::vector<std::unique_ptr<Worker>> &workers) {
+process_time_stats(const std::vector<Worker*> &workers) {
 
     std::vector<double> request_times, connect_times, ttfb_times, rps_values;
 
@@ -1561,7 +1557,7 @@ std::vector<std::string> read_uri_from_file(std::istream &infile) {
 } // namespace
 
 namespace {
-std::unique_ptr<Worker> create_worker(uint32_t id, SSL_CTX *ssl_ctx,
+Worker * create_worker(uint32_t id, SSL_CTX *ssl_ctx,
                                       size_t nclients, size_t rate) {
     std::stringstream rate_report;
     if (config.is_rate_mode() && nclients > rate) {
@@ -1581,9 +1577,9 @@ std::unique_ptr<Worker> create_worker(uint32_t id, SSL_CTX *ssl_ctx,
     }
 
     if (config.is_rate_mode()) {
-        return std::make_unique<Worker>(id, ssl_ctx, nclients, rate, &config);
+        return new Worker(id, ssl_ctx, nclients, rate, &config);
     } else {
-        return std::make_unique<Worker>(id, ssl_ctx, nclients, nclients, &config);
+        return new Worker(id, ssl_ctx, nclients, nclients, &config);
     }
 }
 } // namespace
@@ -2429,7 +2425,7 @@ int main(int argc, char **argv) {
 
     std::cout << "starting benchmark..." << std::endl;
 
-    std::vector<std::unique_ptr<Worker>> workers;
+    std::vector<Worker *> workers;
     workers.reserve(config.nthreads);
 
     size_t nclients_per_thread = config.nclients / config.nthreads;
