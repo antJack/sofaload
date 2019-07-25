@@ -135,10 +135,8 @@ void writecb(struct ev_loop *loop, ev_io *w, int revents) {
         return;
     }
     if (rv != 0) {
-        std::cout << "client id: " << client->id << " writecb call rv: " << rv << std::endl;
         client->fail();
         client->worker->free_client(client);
-        delete client;
     }
 }
 } // namespace
@@ -148,7 +146,6 @@ void readcb(struct ev_loop *loop, ev_io *w, int revents) {
     auto client = static_cast<Client *>(w->data);
     client->restart_timeout();
     if (client->do_read() != 0) {
-        std::cout << "readcb call client->try_again_or_fail()" << std::endl;
         if (client->try_again_or_fail() == 0) {
             return;
         }
@@ -158,43 +155,6 @@ void readcb(struct ev_loop *loop, ev_io *w, int revents) {
     }
     writecb(loop, &client->wev, revents);
     // client->disconnect() and client->fail() may be called
-}
-} // namespace
-
-namespace {
-// Called every rate_period when rate mode is being used
-void rate_period_timeout_w_cb(struct ev_loop *loop, ev_timer *w, int revents) {
-    auto worker = static_cast<Worker *>(w->data);
-    auto nclients_per_second = worker->rate;
-    auto conns_remaining = worker->nclients - worker->nconns_made;
-    auto nclients = std::min(nclients_per_second, conns_remaining);
-
-    for (size_t i = 0; i < nclients; ++i) {
-        auto client =
-            std::make_unique<Client>(worker->next_client_id++, worker);
-
-        ++worker->nconns_made;
-
-        if (client->connect() != 0) {
-            std::cerr << "client could not connect to host" << std::endl;
-            client->fail();
-        } else {
-            if (worker->config->is_timing_based_mode()) {
-                worker->clients.push_back(client.release());
-            } else {
-                client.release();
-            }
-        }
-        worker->report_rate_progress();
-    }
-    if (!worker->config->is_timing_based_mode()) {
-        if (worker->nconns_made >= worker->nclients) {
-            ev_timer_stop(worker->loop, w);
-        }
-    } else {
-        // To check whether all created clients are pushed correctly
-        assert(worker->nclients == worker->clients.size());
-    }
 }
 } // namespace
 
@@ -212,6 +172,7 @@ void duration_timeout_cb(struct ev_loop *loop, ev_timer *w, int revents) {
               << ". Stopping all clients." << std::endl;
     worker->stop_all_clients();
     std::cout << "Stopped all clients for thread #" << worker->id << std::endl;
+    ev_break(loop, EVBREAK_ALL);
 }
 } // namespace
 
@@ -504,7 +465,6 @@ void Client::disconnect() {
     ev_timer_stop(worker->loop, &request_timeout_watcher);
     streams.clear();
     session.reset();
-    wb.reset();
     state = CLIENT_IDLE;
     ev_io_stop(worker->loop, &wev);
     ev_io_stop(worker->loop, &rev);
@@ -546,7 +506,7 @@ int Client::submit_request() {
     }
     total_req_send++;
 
-    if (session->submit_request() != 0) {
+    if (session && session->submit_request() != 0) {
         return -1;
     }
 
@@ -954,7 +914,7 @@ int Client::on_write() {
         return 0;
     }
 
-    if (session->on_write() != 0) {
+    if (session && session->on_write() != 0) {
         return -1;
     }
     return 0;
@@ -1239,11 +1199,6 @@ Worker::Worker(uint32_t id, SSL_CTX *ssl_ctx, size_t nclients, size_t rate,
     //     progress_interval = std::max(static_cast<size_t>(1), nclients / 10);
     // }
 
-    // Below timeout is not needed in case of timing-based benchmarking
-    // create timer that will go off every rate_period
-    ev_timer_init(&timeout_watcher, rate_period_timeout_w_cb, 0.,
-                  config->rate_period);
-    timeout_watcher.data = this;
 
     ev_timer_init(&duration_watcher, duration_timeout_cb, config->duration, 0.);
     duration_watcher.data = this;
@@ -1263,9 +1218,6 @@ Worker::Worker(uint32_t id, SSL_CTX *ssl_ctx, size_t nclients, size_t rate,
 }
 
 Worker::~Worker() {
-    ev_timer_stop(loop, &timeout_watcher);
-    ev_timer_stop(loop, &duration_watcher);
-    ev_timer_stop(loop, &warmup_watcher);
     ev_loop_destroy(loop);
 }
 
@@ -1276,9 +1228,9 @@ void Worker::stop_all_clients() {
             // std::cout << "Worker::stop_all_clients() stop client id: " << client->id << std::endl;
             client->terminate_session();
             // client->fail();
+            client->disconnect();
         }
     }
-    ev_break(loop, EVBREAK_ONE);
 }
 
 void Worker::free_client(Client *deleted_client) {
@@ -1294,26 +1246,19 @@ void Worker::free_client(Client *deleted_client) {
 }
 
 void Worker::run() {
-    if (!config->is_rate_mode() && !config->is_timing_based_mode()) {
-        std::cout << "Worker::run() create " << nclients << " client " << std::endl;
-        for (size_t i = 0; i < nclients; ++i) {
-            auto client = std::make_unique<Client>(next_client_id++, this);
-            if (client->connect() != 0) {
-                std::cerr << "client could not connect to host" << std::endl;
-                client->fail();
-            } else {
-                // std::cout << "Worker::run() client release" << std::endl;
-                client.release();
-            }
-        }
-    } else if (config->is_rate_mode()) {
-        ev_timer_again(loop, &timeout_watcher);
+    for (size_t i = 0; i < nclients; ++i) {
 
-        // call callback so that we don't waste the first rate_period
-        rate_period_timeout_w_cb(loop, &timeout_watcher, 0);
-    } else {
-        // call the callback to start for one single time
-        rate_period_timeout_w_cb(loop, &timeout_watcher, 0);
+        auto client = new Client(next_client_id++, this);
+
+        ++nconns_made;
+
+        if (client->connect() != 0) {
+            std::cerr << "client could not connect to host" << std::endl;
+            client->fail();
+        } else {
+            clients.push_back(client);
+        }
+        report_rate_progress();
     }
     ev_run(loop, 0);
 }
@@ -2716,7 +2661,7 @@ time for request: )"
         for (auto i : worker->rtts)
             ++rtts[i - rtt_min];
     }
-    std::vector<double> percentiles{50.0, 75.0, 90.0, 99.0};
+    std::vector<double> percentiles{50.0, 75.0, 90.0, 95.0, 99.0};
     std::cout << "\n  Latency  Distribution" << std::endl;
     for (int i = 0; i < percentiles.size(); i++) {
         double percentile = percentiles[i];

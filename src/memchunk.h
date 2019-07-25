@@ -302,7 +302,7 @@ template <typename Memchunk> struct Memchunks {
         return ndata - count;
     }
     int riovec(struct iovec *iov, int iovcnt) const {
-        if (!head) {
+        if (!head || len <= 0) {
             return 0;
         }
         auto m = head;

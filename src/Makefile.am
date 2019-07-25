@@ -64,7 +64,8 @@ if ENABLE_APP
 bin_PROGRAMS += sofaload
 
 sofaload_SOURCES = util.cc util.h \
-	http2.cc http2.h h2load.cc h2load.h \
+	http2.cc http2.h \
+	h2load.cc h2load.h \
 	timegm.c timegm.h \
 	tls.cc tls.h \
 	h2load_session.h \

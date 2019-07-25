@@ -97,7 +97,7 @@ int SofaRpcSession::on_read(const uint8_t *data, size_t len) {
 
             // TODO
             auto req_stat = client_->get_req_stat(last_stream_id_);
-            if (req_stat->data_offset >= client_->worker->config->data_length) {
+            if (!req_stat || req_stat->data_offset >= client_->worker->config->data_length) {
                 client_->on_stream_close(last_stream_id_, last_respstatus_ == RESPONSE_STATUS_SUCCESS);
             }
         }
