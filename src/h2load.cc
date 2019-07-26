@@ -1218,25 +1218,29 @@ Worker::~Worker() {
 void Worker::stop_all_clients() {
     for (auto client : clients) {
         // std::cout << "Worker::stop_all_clients() stop client id: " << client->id << std::endl;
-        if (client && client->session) {
+        if (!client)
+            continue;
+        client->record_client_end_time();
+        if (client->session) {
             // std::cout << "Worker::stop_all_clients() stop client id: " << client->id << std::endl;
             client->terminate_session();
             // client->fail();
             client->disconnect();
         }
+        process_client_stat(&client->cstat);
     }
 }
 
 void Worker::free_client(Client *deleted_client) {
-    for (auto &client : clients) {
-        if (client == deleted_client) {
-            // client->req_todo = client->req_done;
-            // stats.req_todo += client->req_todo;
-            auto index = &client - &clients[0];
-            clients[index] = NULL;
-            return;
-        }
-    }
+    // for (auto &client : clients) {
+    //     if (client == deleted_client) {
+    //         // client->req_todo = client->req_done;
+    //         // stats.req_todo += client->req_todo;
+    //         auto index = &client - &clients[0];
+    //         clients[index] = NULL;
+    //         return;
+    //     }
+    // }
 }
 
 void Worker::run() {
@@ -2101,7 +2105,7 @@ int main(int argc, char **argv) {
         }
     }
     total_req_left.store(config.nreqs);
-    std::cout << total_req_left << std::endl;
+    // std::cout << total_req_left << std::endl;
 
     struct sigaction act {};
     act.sa_handler = SIG_IGN;
@@ -2603,12 +2607,12 @@ time for request: )"
               << util::format_duration(ts.connect.mean) << "  " << std::setw(10)
               << util::format_duration(ts.connect.sd) << std::setw(9)
               << util::dtos(ts.connect.within_sd) << "%"
-              << "\ntime to 1st byte: " << std::setw(10)
-              << util::format_duration(ts.ttfb.min) << "  " << std::setw(10)
-              << util::format_duration(ts.ttfb.max) << "  " << std::setw(10)
-              << util::format_duration(ts.ttfb.mean) << "  " << std::setw(10)
-              << util::format_duration(ts.ttfb.sd) << std::setw(9)
-              << util::dtos(ts.ttfb.within_sd) << "%"
+            //   << "\ntime to 1st byte: " << std::setw(10)
+            //   << util::format_duration(ts.ttfb.min) << "  " << std::setw(10)
+            //   << util::format_duration(ts.ttfb.max) << "  " << std::setw(10)
+            //   << util::format_duration(ts.ttfb.mean) << "  " << std::setw(10)
+            //   << util::format_duration(ts.ttfb.sd) << std::setw(9)
+            //   << util::dtos(ts.ttfb.within_sd) << "%"
               << "\nreq/s           : " << std::setw(10) << ts.rps.min << "  "
               << std::setw(10) << ts.rps.max << "  " << std::setw(10)
               << ts.rps.mean << "  " << std::setw(10) << ts.rps.sd

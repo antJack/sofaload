@@ -81,12 +81,13 @@ int SofaRpcSession::on_read(const uint8_t *data, size_t len) {
         std::cout.write(reinterpret_cast<const char *>(data), len);
         // std::cout << "--on_read--" << std::endl;
     }
+    client_->record_ttfb();
 
     read_buffer_.append(data, len);
 
     for (;;) {
         if (bytes_to_discard_ != 0) {
-            client_->record_ttfb();
+
             // if (read_buffer_.rleft() < bytes_to_discard_)
             //     break;
             // read_buffer_.drain(bytes_to_discard_);
