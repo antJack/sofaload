@@ -1159,12 +1159,11 @@ int get_ev_loop_flags() {
 namespace {
 void update_worker_qpsLeft(struct ev_loop *loop, ev_periodic *w, int revents) {
     auto worker = static_cast<Worker *>(w->data);
-    worker->qpsLeft += worker->req_per_period;
-    // std::cout << "update_worker_qpsLeft get called qpsLeft: " << worker->qpsLeft << " adding: " << worker->req_per_period << std::endl;
+    worker->qpsLeft += worker->qps_counts_[worker->qps_count_index_];
+    worker->qps_count_index_ = (worker->qps_count_index_ + 1) % worker->qps_counts_.size();
     while (worker->qpsLeft && !worker->clientsBlockedDueToQps.empty()) {
         Client *c = worker->clientsBlockedDueToQps.back();
         worker->clientsBlockedDueToQps.pop_back();
-        // std::cout << "update_worker_qpsLeft numBlocks: " << worker->clientsBlockedDueToQps.size() << " pop client id: " << c->id << std::endl;
         if (c->submit_request() != 0) {
             c->process_request_failure();
         }
@@ -1186,7 +1185,7 @@ Worker::Worker(uint32_t id, SSL_CTX *ssl_ctx, size_t nclients, size_t rate,
       rate(rate), next_client_id(0), rtts(),
       rtt_min(std::numeric_limits<uint64_t>::max()),
       rtt_max(std::numeric_limits<uint64_t>::min()), qpsLeft(0),
-      req_per_period(0) {
+      qps_count_index_(0) {
     // if (!config->is_rate_mode() && !config->is_timing_based_mode()) {
     //     progress_interval = std::max(static_cast<size_t>(1), req_todo / 10);
     // } else {
@@ -1274,10 +1273,8 @@ void Worker::record_rtt(uint64_t rtt_in_us) {
     rtt_max = std::max(rtt_max, rtt_in_us);
 }
 
-void Worker::set_req_per_period(size_t rpp) {
-    // std::cout << "Worker::set_req_per_period req_per_period: " << rpp << std::endl;
-    req_per_period = rpp;
-    qpsLeft = rpp;
+void Worker::set_qps_counts(std::vector<size_t> qps_count) {
+    qps_counts_ = qps_count;
 }
 
 namespace {
@@ -2416,15 +2413,6 @@ int main(int argc, char **argv) {
     size_t rate_per_thread = config.rate / config.nthreads;
     ssize_t rate_per_thread_rem = config.rate % config.nthreads;
 
-    size_t req_per_period = 0;
-    size_t req_per_period_per_thread = 0;
-    ssize_t req_per_period_rem = 0;
-    if (config.is_qps_mode()) {
-        req_per_period = config.qps / qps_update_per_second;
-        req_per_period_per_thread = req_per_period / config.nthreads;
-        req_per_period_rem = req_per_period % config.nthreads;
-    }
-
     std::mutex mu;
     std::condition_variable cv;
     auto ready = false;
@@ -2442,15 +2430,17 @@ int main(int argc, char **argv) {
             ++nclients;
         }
 
-        workers.push_back(create_worker(i, ssl_ctx, nclients, rate));
-        auto &worker = workers.back();
+        Worker * worker = create_worker(i, ssl_ctx, nclients, rate);
+        workers.push_back(worker);
         if (config.is_qps_mode()) {
-            auto nqps = req_per_period_per_thread;
-            if (req_per_period_rem > 0) {
+            size_t nqps = config.qps / config.nthreads;
+            if (i < config.qps % config.nthreads)
                 ++nqps;
-                --req_per_period_rem;
+            std::vector<size_t> qps_counts(qps_update_per_second, 0);
+            for (size_t q = 0; q < nqps; q++) {
+                qps_counts[std::rand() % qps_update_per_second]++;
             }
-            worker->set_req_per_period(nqps);
+            worker->set_qps_counts(qps_counts);
         }
         futures.push_back(
             std::async(std::launch::async, [&worker, &mu, &cv, &ready]() {

@@ -271,11 +271,13 @@ struct Worker {
     uint64_t rtt_max;
     void record_rtt(uint64_t rtt_in_us);
 
-    size_t req_per_period;
     uint64_t qpsLeft;
     ev_periodic qpsUpdater;
     std::vector<Client *> clientsBlockedDueToQps;
-    void set_req_per_period(size_t qps);
+
+    size_t qps_count_index_;
+    std::vector<size_t> qps_counts_;
+    void set_qps_counts(std::vector<size_t> qps_counts);
 };
 
 struct Stream {
