@@ -1159,8 +1159,12 @@ int get_ev_loop_flags() {
 namespace {
 void update_worker_qpsLeft(struct ev_loop *loop, ev_periodic *w, int revents) {
     auto worker = static_cast<Worker *>(w->data);
-    worker->qpsLeft += worker->qps_counts_[worker->qps_count_index_];
-    worker->qps_count_index_ = (worker->qps_count_index_ + 1) % worker->qps_counts_.size();
+    if (!worker->qps_counts_.empty()) {
+        worker->qpsLeft += worker->qps_counts_[worker->qps_count_index_];
+        worker->qps_count_index_ = (worker->qps_count_index_ + 1) % worker->qps_counts_.size();
+    } else {
+        worker->qpsLeft = std::numeric_limits<int>::max();
+    }
     while (worker->qpsLeft && !worker->clientsBlockedDueToQps.empty()) {
         Client *c = worker->clientsBlockedDueToQps.back();
         worker->clientsBlockedDueToQps.pop_back();
@@ -2430,8 +2434,8 @@ int main(int argc, char **argv) {
             ++nclients;
         }
 
-        Worker * worker = create_worker(i, ssl_ctx, nclients, rate);
-        workers.push_back(worker);
+        workers.push_back(create_worker(i, ssl_ctx, nclients, rate));
+        auto &worker = workers.back();
         if (config.is_qps_mode()) {
             size_t nqps = config.qps / config.nthreads;
             if (i < config.qps % config.nthreads)
