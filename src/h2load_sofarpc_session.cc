@@ -36,9 +36,6 @@ SofaRpcSession::SofaRpcSession(Client *client)
 SofaRpcSession::~SofaRpcSession() {}
 
 void SofaRpcSession::on_connect() {
-    // if (client_->worker->config->verbose) {
-    //     std::cout << "on_connect" << std::endl;
-    // }
     client_->signal_write();
 }
 
@@ -51,17 +48,12 @@ int SofaRpcSession::submit_request() {
         client_->reqidx = 0;
     }
 
-    // if (client_->worker->config->verbose) {
-    //     std::cout << "submit_request" << std::endl;
-    // }
-
     int stream_id = stream_req_counter_++;
     client_->on_request(stream_id);
 
     auto req_stat = client_->get_req_stat(stream_id);
     client_->record_request_time(req_stat);
 
-    // a piece of shit
     char *bytes = new char[req.size()];
     std::memcpy(bytes, req.c_str(), req.size());
     util::putBigEndianI32(&bytes[5], stream_id);
@@ -69,17 +61,13 @@ int SofaRpcSession::submit_request() {
     client_->wb.append(bytes, req.size());
     delete[] bytes;
 
-    // std::cout << "[submit_request] " << stream_id << " " << req << std::endl;
-
     return 0;
 }
 
 int SofaRpcSession::on_read(const uint8_t *data, size_t len) {
 
     if (client_->worker->config->verbose) {
-        // std::cout << "--on_read--" << std::endl;
         std::cout.write(reinterpret_cast<const char *>(data), len);
-        // std::cout << "--on_read--" << std::endl;
     }
     client_->record_ttfb();
 
@@ -87,16 +75,11 @@ int SofaRpcSession::on_read(const uint8_t *data, size_t len) {
 
     for (;;) {
         if (bytes_to_discard_ != 0) {
-
-            // if (read_buffer_.rleft() < bytes_to_discard_)
-            //     break;
-            // read_buffer_.drain(bytes_to_discard_);
             size_t bytes_to_drain = std::min(bytes_to_discard_, read_buffer_.rleft());
             read_buffer_.drain(bytes_to_drain);
             client_->worker->stats.bytes_body += bytes_to_drain;
             bytes_to_discard_ -= bytes_to_drain;
 
-            // TODO
             auto req_stat = client_->get_req_stat(last_stream_id_);
             if (!req_stat || req_stat->data_offset >= client_->worker->config->data_length) {
                 client_->on_stream_close(last_stream_id_, last_respstatus_ == RESPONSE_STATUS_SUCCESS);
@@ -111,7 +94,6 @@ int SofaRpcSession::on_read(const uint8_t *data, size_t len) {
             uint16_t classLen = util::getBigEndianI16(&bytes[12]);
             uint16_t headerLen = util::getBigEndianI16(&bytes[14]);
             uint32_t contentLen = util::getBigEndianI32(&bytes[16]);
-            // std::cout << requestId << " " << respstatus << " " << classLen << " " << headerLen << " " << contentLen << std::endl;
 
             last_stream_id_ = requestId;
             last_respstatus_ = respstatus;
@@ -132,15 +114,6 @@ int SofaRpcSession::on_read(const uint8_t *data, size_t len) {
 }
 
 int SofaRpcSession::on_write() {
-
-    // if (client_->worker->config->verbose) {
-    //     std::cout << "on_write" << std::endl;
-    // }
-
-    // if (terminate_ && client_->wb.rleft() == 0) {
-    //     std::cout << "SofaRpcSession::on_write() terminate_: " << terminate_ << " client_->wb.rleft(): " << client_->wb.rleft() << std::endl;
-    //     return -1;
-    // }
     if (terminate_) {
         return -1;
     }
@@ -148,9 +121,6 @@ int SofaRpcSession::on_write() {
 }
 
 void SofaRpcSession::terminate() {
-    // if (client_->worker->config->verbose) {
-    // std::cout << "terminate client id: " << client_->id << std::endl;
-    // }
     terminate_ = true;
 }
 

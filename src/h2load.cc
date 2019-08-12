@@ -164,10 +164,7 @@ void duration_timeout_cb(struct ev_loop *loop, ev_timer *w, int revents) {
 
     ev_periodic_stop(worker->loop, &worker->qpsUpdater);
 
-    // std::cout << "Main benchmark duration is over for thread #" << worker->id
-    //           << ". Stopping all clients." << std::endl;
     worker->stop_all_clients();
-    // std::cout << "Stopped all clients for thread #" << worker->id << std::endl;
     ev_break(loop, EVBREAK_ALL);
 }
 } // namespace
@@ -176,18 +173,11 @@ namespace {
 // Called when the warmup duration for infinite number of requests are over
 void warmup_timeout_cb(struct ev_loop *loop, ev_timer *w, int revents) {
     auto worker = static_cast<Worker *>(w->data);
-
-    // std::cout << "Warm-up phase is over for thread #" << worker->id << "."
-    //           << std::endl;
-    // std::cout << "Main benchmark duration is started for thread #" << worker->id
-    //           << "." << std::endl;
     assert(worker->stats.req_started == 0);
     assert(worker->stats.req_done == 0);
 
     for (auto client : worker->clients) {
         if (client) {
-            // assert(client->req_todo == 0);
-            // assert(client->req_left == 1);
             assert(client->req_inflight == 0);
             assert(client->req_started == 0);
             assert(client->req_done == 0);
@@ -357,8 +347,6 @@ int Client::connect() {
         record_connect_start_time();
     } else if (worker->current_phase == Phase::INITIAL_IDLE) {
         worker->current_phase = Phase::WARM_UP;
-        // std::cout << "Warm-up started for thread #" << worker->id << "."
-        //           << std::endl;
         ev_timer_start(worker->loop, &worker->warmup_watcher);
     }
 
@@ -443,16 +431,11 @@ int Client::try_again_or_fail() {
 }
 
 void Client::fail() {
-    // std::cout << "Client::fail id: " << id << std::endl;
     disconnect();
-
     process_abandoned_streams();
 }
 
 void Client::disconnect() {
-
-    // std::cout << "Client::disconnect() id: " << id << std::endl;
-
     record_client_end_time();
 
     ev_timer_stop(worker->loop, &conn_inactivity_watcher);
@@ -485,7 +468,6 @@ int Client::submit_request() {
     if (config.is_qps_mode()) {
         if (worker->qpsLeft == 0) {
             worker->clientsBlockedDueToQps.push_back(this);
-            // std::cout << "Client::submit_request() qps block id: " << id << std::endl;
             return 0;
         } else {
             --worker->qpsLeft;
@@ -551,17 +533,10 @@ void Client::process_abandoned_streams() {
 }
 
 void Client::process_request_failure() {
-    // std::cout << "Client::process_request_failure() id: " << id << std::endl;
     if (worker->current_phase != Phase::MAIN_DURATION) {
-        // terminate_session();
-        // fail();
         ev_break (worker->loop, EVBREAK_ONE);
         return;
     }
-    // if (req_inflight == 0) {
-    //     terminate_session();
-    // }
-    // std::cout << "Process Request Failure:" << worker->stats.req_failed << std::endl;
 }
 
 namespace {
@@ -626,7 +601,6 @@ void Client::report_app_info() {
 }
 
 void Client::terminate_session() {
-    // std::cout << "Client::terminate_session() id: " << id << std::endl;
     session->terminate();
     // http1 session needs writecb to tear down session.
     signal_write();
@@ -762,7 +736,6 @@ void Client::on_stream_close(int32_t stream_id, bool success, bool final) {
                 req_stat->stream_close_time - req_stat->request_time)
                 .count() *
             1000000;
-        // std::cout << rtt << std::endl;
         worker->record_rtt(rtt);
     }
 
@@ -879,7 +852,6 @@ int Client::connection_made() {
 
     auto nreq = session->max_concurrent_streams();
     for (; nreq > 0; --nreq) {
-        // std::cout << "Client::connection_made call submit_request() id: " << id << std::endl;
         if (submit_request() != 0) {
             process_request_failure();
             break;
@@ -945,7 +917,6 @@ int Client::write_clear() {
 
     for (;;) {
         if (on_write() != 0) {
-            // std::cout << "Client::write_clear() id: " << id << " on_write() return -1" << std::endl;
             return -1;
         }
 
@@ -1190,12 +1161,6 @@ Worker::Worker(uint32_t id, SSL_CTX *ssl_ctx, size_t nclients, size_t rate,
       rtt_min(std::numeric_limits<uint64_t>::max()),
       rtt_max(std::numeric_limits<uint64_t>::min()), qpsLeft(0),
       qps_count_index_(0) {
-    // if (!config->is_rate_mode() && !config->is_timing_based_mode()) {
-    //     progress_interval = std::max(static_cast<size_t>(1), req_todo / 10);
-    // } else {
-    //     progress_interval = std::max(static_cast<size_t>(1), nclients / 10);
-    // }
-
 
     ev_timer_init(&duration_watcher, duration_timeout_cb, config->duration, 0.);
     duration_watcher.data = this;
@@ -1220,14 +1185,11 @@ Worker::~Worker() {
 
 void Worker::stop_all_clients() {
     for (auto client : clients) {
-        // std::cout << "Worker::stop_all_clients() stop client id: " << client->id << std::endl;
         if (!client)
             continue;
         client->record_client_end_time();
         if (client->session) {
-            // std::cout << "Worker::stop_all_clients() stop client id: " << client->id << std::endl;
             client->terminate_session();
-            // client->fail();
             client->disconnect();
         }
         process_client_stat(&client->cstat);
@@ -1235,15 +1197,6 @@ void Worker::stop_all_clients() {
 }
 
 void Worker::free_client(Client *deleted_client) {
-    // for (auto &client : clients) {
-    //     if (client == deleted_client) {
-    //         // client->req_todo = client->req_done;
-    //         // stats.req_todo += client->req_todo;
-    //         auto index = &client - &clients[0];
-    //         clients[index] = NULL;
-    //         return;
-    //     }
-    // }
 }
 
 void Worker::run() {
@@ -1542,23 +1495,6 @@ std::vector<std::string> read_uri_from_file(std::istream &infile) {
 namespace {
 Worker * create_worker(uint32_t id, SSL_CTX *ssl_ctx,
                                       size_t nclients, size_t rate) {
-    // std::stringstream rate_report;
-    // if (config.is_rate_mode() && nclients > rate) {
-    //     rate_report << "Up to " << rate << " client(s) will be created every "
-    //                 << util::duration_str(config.rate_period) << " ";
-    // }
-
-    // if (config.is_timing_based_mode()) {
-    //     std::cout << "spawning thread #" << id << ": " << nclients
-    //               << " total client(s). Timing-based test with "
-    //               << config.warm_up_time << "s of warm-up time and "
-    //               << config.duration << "s of main duration for measurements."
-    //               << std::endl;
-    // } else {
-    //     std::cout << "spawning thread #" << id << ": " << nclients
-    //               << " total client(s). " << rate_report.str() << std::endl;
-    // }
-
     if (config.is_rate_mode()) {
         return new Worker(id, ssl_ctx, nclients, rate, &config);
     } else {
@@ -1825,18 +1761,15 @@ int main(int argc, char **argv) {
         }
         case 'e':
             sofaRpcClassname = optarg;
-            // std::cout << sofaRpcClassname << std::endl;
             break;
         case 'a':
             sofaRpcHeaderArg = optarg;
-            // std::cout << sofaRpcHeaderArg << std::endl;
             break;
         case 'o':
             sofaRpcContent = optarg;
             break;
         case 'k':
             sofaRpcTimeout = strtoul(optarg, nullptr, 10);
-            // std::cout << sofaRpcTimeout << std::endl;
             break;
         case 'p': {
             auto proto = StringRef{optarg};
@@ -1947,7 +1880,6 @@ int main(int argc, char **argv) {
             case 11:
                 // --qps
                 config.qps = strtoul(optarg, nullptr, 10);
-                // std::cout << "qps: " << config.qps << std::endl;
                 break;
             }
             break;
@@ -2106,7 +2038,6 @@ int main(int argc, char **argv) {
         }
     }
     total_req_left.store(config.nreqs);
-    // std::cout << total_req_left << std::endl;
 
     struct sigaction act {};
     act.sa_handler = SIG_IGN;
@@ -2601,12 +2532,6 @@ time for request: )"
               << util::format_duration(ts.connect.mean) << "  " << std::setw(10)
               << util::format_duration(ts.connect.sd) << std::setw(9)
               << util::dtos(ts.connect.within_sd) << "%"
-            //   << "\ntime to 1st byte: " << std::setw(10)
-            //   << util::format_duration(ts.ttfb.min) << "  " << std::setw(10)
-            //   << util::format_duration(ts.ttfb.max) << "  " << std::setw(10)
-            //   << util::format_duration(ts.ttfb.mean) << "  " << std::setw(10)
-            //   << util::format_duration(ts.ttfb.sd) << std::setw(9)
-            //   << util::dtos(ts.ttfb.within_sd) << "%"
               << "\nreq/s           : " << std::setw(10) << ts.rps.min << "  "
               << std::setw(10) << ts.rps.max << "  " << std::setw(10)
               << ts.rps.mean << "  " << std::setw(10) << ts.rps.sd
